@@ -1,0 +1,295 @@
+---
+title: "3_ExCells"
+author: "Drew"
+date: "2024-07-28"
+output: html_document
+---
+
+# cola1a - fibroblasts 
+# Rgs5 - pericytes
+# Ptprc - immun 
+# Pecam1 - endothelial 
+# Resp18 - neuroendocrine 
+
+
+####### ex subset 
+
+```{r}
+
+exCells <- readRDS("ProcessedData/QCnoUpper/ExCellsRaw_NoUpper.rds")
+
+```
+
+## renaming idents of possible doublets based on umap 
+
+```{r}
+DimPlot(exCells, reduction = "umap")
+DimPlot(exCells, reduction = "umap", group.by = "DF.classifications")
+FeaturePlot(exCells, features = c("Zg16", "Cpa1", "Krt19", "Sox9")) # acinar 
+FeaturePlot(exCells, features = c("Col1a1"))
+FeaturePlot(exCells, features = c("Rgs5"))
+FeaturePlot(exCells, features = c("Ptprc"))
+FeaturePlot(exCells, features = c("Pecam1"))
+FeaturePlot(exCells, features = c("Resp18"))
+
+plot <- DimPlot(exCells, reduction = "umap")
+select.cells1 <- CellSelector(plot = plot)
+select.cells2 <- CellSelector(plot = plot)
+select.cells3 <- CellSelector(plot = plot)
+select.cells4 <- CellSelector(plot = plot)
+select.cells5 <- CellSelector(plot = plot)
+
+Idents(exCells, cells = select.cells1) <- "DoubletClus1"
+Idents(exCells, cells = select.cells2) <- "DoubletClus2"
+Idents(exCells, cells = select.cells3) <- "DoubletClus3"
+Idents(exCells, cells = select.cells4) <- "DoubletClus4"
+Idents(exCells, cells = select.cells5) <- "DoubletClus5"
+
+table(Idents(exCells))
+exCells@meta.data$DoubletInvestigation <- Idents(exCells)
+
+DimPlot(exCells, reduction = "umap")
+DimPlot(exCells, reduction = "tsne")
+```
+
+#### checking markers of pos doublet clusters 
+
+```{r}
+Markers <- FindAllMarkers(exCells)
+Markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1)
+
+markersList <- list()
+clusIds <- levels(Markers$cluster)
+
+for (i in clusIds) {
+  markersList[[i]] <- head(Markers[Markers$cluster == as.character(i), ], 1000)
+}
+
+topMarkers <- bind_rows(markersList)
+
+write.csv(topMarkers, "ProcessedData/QCnoUpper/DE/exCellsPosDoublets.csv")
+```
+
+```{r}
+saveRDS(exCells, "ProcessedData/QCnoUpperDoubletInvestigation.rds")
+```
+
+
+### subsetting to remove identified doublets 
+
+```{r}
+exCells <- SetIdent(exCells, value = "DoubletInvestigation")
+
+
+exCellsFilt <- subset(exCells, idents = c("9", "11"))
+exCellsFilt
+```
+
+## re-clustering
+
+```{r}
+exCellsFilt <- NormalizeData(exCellsFilt)
+exCellsFilt <- FindVariableFeatures(exCellsFilt)
+exCellsFilt <- ScaleData(exCellsFilt)
+exCellsFilt <- RunPCA(exCellsFilt)
+ElbowPlot(exCellsFilt, ndims = 40)
+
+exCellsFilt <- FindNeighbors(exCellsFilt, dims = 1:20, reduction = "pca")
+exCellsFilt <- FindClusters(exCellsFilt, resolution = c(0.1, 0.2, 0.3, 0.4, 0.5))
+exCellsFilt <- RunUMAP(exCellsFilt, dims = 1:20, reduction = "pca")
+```
+
+## UMAPs
+
+```{r}
+umap3 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.1") + NoLegend()
+umap5 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.2") + NoLegend()
+umap7 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.3") + NoLegend()
+umap8 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.4") + NoLegend()
+umap9 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.5") + NoLegend()
+umap1 <- DimPlot(exCellsFilt, reduction = 'umap' ,label = T, group.by = "sctype0.5") + NoLegend()
+grid.arrange(umap3, umap5, umap7, umap1, umap8, umap9,
+             ncol = 3, nrow = 2,
+             top = textGrob("Ex cells", gp=gpar(fontsize=20)))
+
+table(Idents(exCells))
+```
+
+#### quality check of clusters
+
+```{r}
+
+VlnPlot(exCellsFilt, features = "nFeature_RNA", group.by = "RNA_snn_res.0.5") + NoLegend()
+VlnPlot(exCellsFilt, features = "nCount_RNA", group.by = "RNA_snn_res.0.5") + NoLegend()
+VlnPlot(exCellsFilt, features = "qc.mito", group.by = "RNA_snn_res.0.5") + NoLegend()
+
+```
+
+### Examining markers and selected further possible doublets
+
+```{r}
+plot <- DimPlot(exCellsFilt, reduction = "umap")
+DimPlot(exCellsFilt, reduction = "umap", label = T)
+DimPlot(exCellsFilt, reduction = "umap", group.by = "DF.classifications")
+
+FeaturePlot(exCellsFilt, features = c("Zg16", "Cpa1", "Krt19", "Sox9")) # acinar 
+
+RidgePlot(exCellsFilt, features = c("Col1a1")) # Fibro 
+FeaturePlot(exCellsFilt, features = c("Col1a1")) # Fibro 
+select.cellsFib <- CellSelector(plot = plot)
+
+FeaturePlot(exCellsFilt, features = c("Pdgfrb")) # pericytes
+
+RidgePlot(exCellsFilt, features = c("Ptprc")) # Immune
+FeaturePlot(exCellsFilt, features = c("Ptprc")) # Immune
+select.cellsImmune <- CellSelector(plot = plot)
+
+FeaturePlot(exCellsFilt, features = c("Pecam1")) # Endothelium
+RidgePlot(exCellsFilt, features = c("Pecam1")) # Endothelium
+select.cellsEndo <- CellSelector(plot = plot)
+
+FeaturePlot(exCellsFilt, features = c("Resp18")) # Neuorendocrine
+```
+
+## renaming likely doublets 
+
+```{r}
+Idents(exCellsFilt, cells = select.cellsEndo) <- "DoubletClusEndo"
+Idents(exCellsFilt, cells = select.cellsFib) <- "DoubletClusFib"
+Idents(exCellsFilt, cells = select.cellsImmune) <- "DoubletClusImmune"
+
+
+table(Idents(exCellsFilt))
+exCellsFilt@meta.data$DoubletInvestigation2 <- Idents(exCellsFilt)
+
+DimPlot(exCellsFilt, reduction = "umap")
+DimPlot(exCells, reduction = "tsne")
+```
+
+#### checking markers of pos doublet clusters 
+
+```{r}
+Markers2 <- FindAllMarkers(exCellsFilt)
+Markers2 %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1)
+
+markersList2 <- list()
+clusIds2 <- levels(Markers2$cluster)
+
+for (i in clusIds2) {
+  markersList2[[i]] <- head(Markers2[Markers2$cluster == as.character(i), ], 1000)
+}
+
+topMarkers2 <- bind_rows(markersList2)
+
+write.csv(topMarkers2, "ProcessedData/QCnoUpper/DE/exCellsPosDoublets_round2.csv")
+```
+
+```{r}
+saveRDS(exCellsFilt, "ProcessedData/QCnoUpperDoubletInvestigation_round2.rds")
+```
+
+### subsetting to remove identified doublets ROUND 2
+
+```{r}
+exCellsFilt <- SetIdent(exCellsFilt, value = "DoubletInvestigation2")
+table(Idents(exCellsFilt))
+
+exCellsSingle <- subset(exCellsFilt, idents = c("0", "1", "2", "3", "4", "5", "6"))
+exCellsSingle
+DimPlot(exCellsSingle, reduction = "umap")
+```
+
+## re-clustering
+
+```{r}
+exCellsSingle <- NormalizeData(exCellsSingle)
+exCellsSingle <- FindVariableFeatures(exCellsSingle)
+exCellsSingle <- ScaleData(exCellsSingle)
+exCellsSingle <- RunPCA(exCellsSingle)
+ElbowPlot(exCellsSingle, ndims = 40)
+
+exCellsSingle <- FindNeighbors(exCellsSingle, dims = 1:20, reduction = "pca")
+exCellsSingle <- FindClusters(exCellsSingle, resolution = c(0.1, 0.2, 0.3, 0.4, 0.5))
+exCellsSingle <- RunUMAP(exCellsSingle, dims = 1:20, reduction = "pca")
+```
+
+## UMAPs
+
+```{r}
+umap3 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.1") + NoLegend()
+umap5 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.2") + NoLegend()
+umap7 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.3") + NoLegend()
+umap8 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.4") + NoLegend()
+umap9 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "RNA_snn_res.0.5") + NoLegend()
+umap1 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, group.by = "sctype0.5") + NoLegend()
+grid.arrange(umap3, umap5, umap7, umap1, umap8, umap9,
+             ncol = 3, nrow = 2,
+             top = textGrob("Ex cells", gp=gpar(fontsize=20)))
+
+table(Idents(exCellsSingle))
+```
+
+#### quality check of clusters
+
+```{r}
+
+VlnPlot(exCellsSingle, features = "nFeature_RNA", group.by = "RNA_snn_res.0.5") + NoLegend()
+VlnPlot(exCellsSingle, features = "nCount_RNA", group.by = "RNA_snn_res.0.5") + NoLegend()
+VlnPlot(exCellsSingle, features = "qc.mito", group.by = "RNA_snn_res.0.5") + NoLegend()
+
+```
+
+### once again looking at markers 
+
+```{r}
+DimPlot(exCellsSingle, reduction = "umap")
+DimPlot(exCellsSingle, reduction = "umap", group.by = "DF.classifications")
+FeaturePlot(exCellsSingle, features = c("Zg16", "Cpa1", "Krt19", "Sox9")) # acinar 
+
+FeaturePlot(exCellsSingle, features = c("Col1a1"))
+RidgePlot(exCellsSingle, features = c("Col1a1"))
+
+FeaturePlot(exCellsSingle, features = c("Rgs5"))
+RidgePlot(exCellsSingle, features = c("Rgs5"))
+
+FeaturePlot(exCellsSingle, features = c("Ptprc"))
+RidgePlot(exCellsSingle, features = c("Ptprc"))
+
+FeaturePlot(exCellsSingle, features = c("Pecam1"))
+RidgePlot(exCellsSingle, features = c("Pecam1"))
+
+FeaturePlot(exCellsSingle, features = c("Resp18"))
+RidgePlot(exCellsSingle, features = c("Resp18"))
+```
+
+## checking against doublet finder 
+
+```{r}
+umap5 <- DimPlot(exCellsSingle, reduction = 'umap' ,label = T, pt.size = 1.5) + NoLegend()
+umap1 <- DimPlot(exCellsSingle, reduction = 'umap' , group.by = "DF.classifications", pt.size = 1.5)
+grid.arrange(umap5, umap1,
+             ncol = 2, nrow = 1,
+             top = textGrob("Ex cells", gp=gpar(fontsize=20)))
+```
+
+### recording barcode of identified doublets 
+
+```{r}
+barcodesList <- list(select.cells1, select.cells2, select.cells3, select.cells4, select.cells5, select.cellsEndo, select.cellsFib, select.cellsImmune)
+
+barcodesList <- lapply(barcodesList, function(x) {
+  c(x, rep(NA, 194 - length(x)))
+})
+
+write.table(as.data.frame(barcodesList), file = "ProcessedData/QCnoUpper/ExDoubletBarcodes.txt", sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+```
+
+### saving finale output 
+
+```{r}
+saveRDS(exCellsSingle, "ProcessedData/QCnoUpper/exCellsFiltered.rds")
+```
